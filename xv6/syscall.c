@@ -17,8 +17,18 @@
 int
 fetchint(uint addr, int *ip)
 {
-  if(addr >= proc->sz || addr+4 > proc->sz)
+  struct proc *curproc = myproc();
+
+
+  if (addr >= curproc->sz && addr < curproc->tf->esp)
     return -1;
+
+  if (addr + 4 > curproc->sz && addr < curproc->tf->esp)
+    return -1;
+
+  if (addr + 4 > USERSTACKTOP)
+    return -1;
+
   *ip = *(int*)(addr);
   return 0;
 }
@@ -30,14 +40,26 @@ int
 fetchstr(uint addr, char **pp)
 {
   char *s, *ep;
+  struct proc *curproc = myproc();
 
-  if(addr >= proc->sz)
+  if((addr >= curproc->sz && addr < curproc->tf->esp) || addr > USERSTACKTOP)
     return -1;
+
+
   *pp = (char*)addr;
-  ep = (char*)proc->sz;
-  for(s = *pp; s < ep; s++)
+
+  if (addr < curproc->sz)
+    ep = (char *)curproc->sz;
+  else if (addr >= curproc->tf->esp && addr < USERSTACKTOP)
+    ep = (char *)USERSTACKTOP;
+  else
+    return -1;
+
+  ep = (char*)curproc->sz;
+  for(s = *pp; s < ep; s++){
     if(*s == 0)
       return s - *pp;
+  }
   return -1;
 }
 
@@ -45,22 +67,34 @@ fetchstr(uint addr, char **pp)
 int
 argint(int n, int *ip)
 {
-  return fetchint(proc->tf->esp + 4 + 4*n, ip);
+  return fetchint((myproc()->tf->esp) + 4 + 4*n, ip);
 }
 
 // Fetch the nth word-sized system call argument as a pointer
-// to a block of memory of size n bytes.  Check that the pointer
+// to a block of memory of size bytes.  Check that the pointer
 // lies within the process address space.
 int
 argptr(int n, char **pp, int size)
 {
   int i;
-  
+  struct proc *curproc = myproc();
+ 
   if(argint(n, &i) < 0)
     return -1;
-  if((uint)i >= proc->sz || (uint)i+size > proc->sz)
+
+  if ((uint)i < PGSIZE)
     return -1;
-  *pp = (char*)i;
+  if ((uint)i > USERSTACKTOP)
+    return -1;
+  if ((uint)i >= curproc->sz && (uint)i < USERSTACKTOP - curproc->stacksize)
+    return -1;
+  if ((uint)(i + size) > curproc->sz && i + size < USERSTACKTOP - curproc->stacksize)
+    return -1;
+  if ((uint)(i + size) > USERSTACKTOP)
+    return -1;
+  if (((uint)i < curproc->sz) && (uint)(i + size) >= USERSTACKTOP - curproc->stacksize)
+    return -1;
+  *pp = (char *)i;
   return 0;
 }
 
@@ -98,6 +132,7 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_fpgn(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -121,19 +156,21 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_fpgn]   sys_fpgn,
 };
 
 void
 syscall(void)
 {
   int num;
+  struct proc *curproc = myproc();
 
-  num = proc->tf->eax;
+  num = curproc->tf->eax;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    proc->tf->eax = syscalls[num]();
+    curproc->tf->eax = syscalls[num]();
   } else {
     cprintf("%d %s: unknown sys call %d\n",
-            proc->pid, proc->name, num);
-    proc->tf->eax = -1;
+            curproc->pid, curproc->name, num);
+    curproc->tf->eax = -1;
   }
 }

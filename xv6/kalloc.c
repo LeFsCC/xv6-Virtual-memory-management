@@ -11,6 +11,7 @@
 
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
+                   // defined by the kernel linker script in kernel.ld
 
 struct run {
   struct run *next;
@@ -20,6 +21,10 @@ struct {
   struct spinlock lock;
   int use_lock;
   struct run *freelist;
+  // free pages number
+  uint fpgn;
+  // page count share, indicate the times that one page shared by child process
+  ushort pc_sh[PHYSTOP >> PGSHIFT];
 } kmem;
 
 // Initialization happens in two phases.
@@ -32,6 +37,7 @@ kinit1(void *vstart, void *vend)
 {
   initlock(&kmem.lock, "kmem");
   kmem.use_lock = 0;
+  kmem.fpgn = 0;
   freerange(vstart, vend);
 }
 
@@ -47,10 +53,11 @@ freerange(void *vstart, void *vend)
 {
   char *p;
   p = (char*)PGROUNDUP((uint)vstart);
-  for(; p + PGSIZE <= (char*)vend; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)vend; p += PGSIZE){
     kfree(p);
+    kmem.pc_sh[V2P(p) >> PGSHIFT] = 0;
+  }
 }
-
 //PAGEBREAK: 21
 // Free the page of physical memory pointed at by v,
 // which normally should have been returned by a
@@ -61,17 +68,26 @@ kfree(char *v)
 {
   struct run *r;
 
-  if((uint)v % PGSIZE || v < end || v2p(v) >= PHYSTOP)
+  if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
-  memset(v, 1, PGSIZE);
+  
 
   if(kmem.use_lock)
     acquire(&kmem.lock);
-  r = (struct run*)v;
-  r->next = kmem.freelist;
-  kmem.freelist = r;
+  if(kmem.pc_sh[V2P(v) >> PGSHIFT] > 0) {
+      kmem.pc_sh[V2P(v) >> PGSHIFT] -= 1;
+  }
+
+  if (kmem.pc_sh[V2P(v) >> PGSHIFT] == 0) {
+  	  memset(v, 1, PGSIZE);
+  	  kmem.fpgn += 1;
+  	  r = (struct run*)v;
+	  r->next = kmem.freelist;
+	  kmem.freelist = r;
+  }
+
   if(kmem.use_lock)
     release(&kmem.lock);
 }
@@ -87,10 +103,46 @@ kalloc(void)
   if(kmem.use_lock)
     acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r) {
+    kmem.fpgn -= 1;
     kmem.freelist = r->next;
+    kmem.pc_sh[V2P((void *)r) >> PGSHIFT] = 1;
+  }
   if(kmem.use_lock)
     release(&kmem.lock);
   return (char*)r;
 }
 
+uint get_free_pages_num(void) {
+  uint t = 0;
+  acquire(&kmem.lock);
+  t = kmem.fpgn;
+  release(&kmem.lock);
+  return t;
+}
+
+void add_page_share(int pg_addr) {
+   if (pg_addr > PHYSTOP || pg_addr < (uint)V2P(end))
+      panic("add_page_share");
+
+   acquire(&kmem.lock);
+   kmem.pc_sh[pg_addr >> PGSHIFT] += 1;
+   release(&kmem.lock);
+}
+
+void red_page_share(int pg_addr) {
+   if (pg_addr > PHYSTOP || pg_addr < (uint)V2P(end))
+      panic("red_page_share");
+
+   acquire(&kmem.lock);
+   kmem.pc_sh[pg_addr >> PGSHIFT] -= 1;
+   release(&kmem.lock);
+}
+
+ushort get_page_share(int pg_addr) {
+   ushort pcs = 0;
+   acquire(&kmem.lock);
+   pcs = kmem.pc_sh[pg_addr >> PGSHIFT];
+   release(&kmem.lock);
+   return pcs;
+}

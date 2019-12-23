@@ -17,14 +17,20 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
+  struct proc *curproc = myproc();
 
-  if((ip = namei(path)) == 0)
+  begin_op();
+
+  if((ip = namei(path)) == 0){
+    end_op();
+    cprintf("exec: fail\n");
     return -1;
+  }
   ilock(ip);
   pgdir = 0;
 
   // Check ELF header
-  if(readi(ip, (char*)&elf, 0, sizeof(elf)) < sizeof(elf))
+  if(readi(ip, (char*)&elf, 0, sizeof(elf)) != sizeof(elf))
     goto bad;
   if(elf.magic != ELF_MAGIC)
     goto bad;
@@ -41,21 +47,30 @@ exec(char *path, char **argv)
       continue;
     if(ph.memsz < ph.filesz)
       goto bad;
+    if(ph.vaddr + ph.memsz < ph.vaddr)
+      goto bad;
     if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz)) == 0)
+      goto bad;
+    if(ph.vaddr % PGSIZE != 0)
       goto bad;
     if(loaduvm(pgdir, (char*)ph.vaddr, ip, ph.off, ph.filesz) < 0)
       goto bad;
   }
   iunlockput(ip);
+  end_op();
   ip = 0;
 
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.
   sz = PGROUNDUP(sz);
-  if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE)) == 0)
+  curproc->stack_growing = 1;
+  if (allocuvm(pgdir, USERSTACKTOP - PGSIZE, USERSTACKTOP) == 0)
     goto bad;
-  clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
-  sp = sz;
+
+  
+  curproc->stack_growing = 0;
+  
+  sp = USERSTACKTOP;
 
   // Push argument strings, prepare rest of stack in ustack.
   for(argc = 0; argv[argc]; argc++) {
@@ -80,22 +95,26 @@ exec(char *path, char **argv)
   for(last=s=path; *s; s++)
     if(*s == '/')
       last = s+1;
-  safestrcpy(proc->name, last, sizeof(proc->name));
+  safestrcpy(curproc->name, last, sizeof(curproc->name));
 
   // Commit to the user image.
-  oldpgdir = proc->pgdir;
-  proc->pgdir = pgdir;
-  proc->sz = sz;
-  proc->tf->eip = elf.entry;  // main
-  proc->tf->esp = sp;
-  switchuvm(proc);
+  oldpgdir = curproc->pgdir;
+  curproc->pgdir = pgdir;
+  curproc->sz = sz;
+  curproc->tf->eip = elf.entry;  // main
+  curproc->tf->esp = sp;
+  curproc->stacksize = PGSIZE;
+
+  switchuvm(curproc);
   freevm(oldpgdir);
   return 0;
 
  bad:
   if(pgdir)
     freevm(pgdir);
-  if(ip)
+  if(ip){
     iunlockput(ip);
+    end_op();
+  }
   return -1;
 }
