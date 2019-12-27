@@ -4,7 +4,7 @@
 
 
 /*
-* Function: test stack auto grows
+* Function: test copy on write
 * Author : zhang jiacheng
 * Time : 2019/12/24
 */

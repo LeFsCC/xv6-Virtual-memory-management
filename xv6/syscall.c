@@ -55,7 +55,6 @@ fetchstr(uint addr, char **pp)
   else
     return -1;
 
-  ep = (char*)curproc->sz;
   for(s = *pp; s < ep; s++){
     if(*s == 0)
       return s - *pp;
