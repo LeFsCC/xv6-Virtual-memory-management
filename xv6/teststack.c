@@ -51,13 +51,13 @@ int main() {
 
 
 	printf(1, "Test7: allocate 221mb stack in my new framework!\n");
-	char b[221][1024][1024];
+	char b[32][1024][1024];
 	for(int i = 0; i < 1024;i++) {
 		for(int j = 0; j < 1024; j++) {
 			b[0][i][j] = '1';
 		}
 	}
-	printf(1, "success in allocate 221mb stack in my new framework!%c\n", b[0][0][0]);
+	printf(1, "success in allocate 32mb stack in my new framework!%c\n", b[0][0][0]);
 
 	return 0;
 }
