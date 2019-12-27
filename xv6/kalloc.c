@@ -140,9 +140,9 @@ void red_page_share(int pg_addr) {
 }
 
 ushort get_page_share(int pg_addr) {
-   if (pg_addr > PHYSTOP || pg_addr < (uint)V2P(end))
+  if (pg_addr > PHYSTOP || pg_addr < (uint)V2P(end))
      panic("get page share!");
- 
+
    ushort pcs = 0;
    acquire(&kmem.lock);
    pcs = kmem.pc_sh[pg_addr >> PGSHIFT];

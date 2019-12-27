@@ -26,6 +26,211 @@ pinit(void)
   initlock(&ptable.lock, "ptable");
 }
 
+// 初始化和虚拟页式存储有关的内存信息
+void vpminit(void)
+{
+  int i;
+  struct proc *thisproc;
+  acquire(&ptable.lock);
+  for (i = 0; i < NPROC; i++)
+  {
+    thisproc = &ptable.proc[i];
+    thisproc->num_mem_entries = 0;
+    thisproc->memstab_head = 0;
+    thisproc->memstab_tail = 0;
+    thisproc->vpstab_head = 0;
+    thisproc->vpstab_tail= 0;
+    thisproc->memqueue_head = 0;
+    thisproc->memqueue_tail = 0;
+    thisproc->num_vpstab_pages = 0;
+
+	  int j;
+    for (j = 0; j < MAX_VPFILES; j++)
+      thisproc->vpfile[j] = 0;
+  }
+  release(&ptable.lock);
+}
+
+// 清空一页物理页
+void memstab_page_clear(struct memstab_page *page, uint clear_link)
+{
+  int i;
+  for (i = 0; i < NUM_MEMSTAB_PAGE_ENTRIES; i++)
+  {
+    page->entries[i].prev = 0;
+    page->entries[i].next = 0;
+    page->entries[i].vaddr = SLOT_USABLE;
+  }
+  if (clear_link)
+  {
+    page->next = 0;
+    page->prev = 0;
+  }
+}
+
+// 分配物理页
+struct memstab_page *memstab_page_alloc(void)
+{
+  struct memstab_page *mstabpg;
+  if ((mstabpg = (struct memstab_page *)kalloc()) == 0)
+    return 0;
+  memstab_page_clear(mstabpg, 1);
+  return mstabpg;
+}
+
+// 清空虚拟页链表
+void memstab_clear(struct proc *pr)
+{
+  struct memstab_page *p = pr->memstab_head;
+  while (p != 0)
+  {
+    memstab_page_clear(p, 0);
+    p = p->next;
+  }
+  pr->num_mem_entries = 0;
+  pr->memqueue_head = 0;
+  pr->memqueue_tail = 0;
+}
+
+// 分配物理页链表
+struct memstab_page * memstab_alloc(void)
+{
+  int i;
+  struct memstab_page *slow, *fast, *head;
+  if ((slow = memstab_page_alloc()) == 0)
+    return 0;
+  head = slow;
+  for (i = 0; i < NUM_MEMSTAB_PAGES - 1; i++)
+  {
+    if ((fast = memstab_page_alloc()) == 0)
+      return 0;
+    slow->next = fast;
+    fast->prev = slow;
+    slow = fast;
+  }
+
+  return head;
+}
+
+// 清空虚拟页
+void vpstab_page_clear(struct vpstab_page *page, uint clear_link)
+{
+  int i;
+  for (i = 0; i < NUM_VPSTAB_PAGE_ENTRIES; i++)
+    page->entries[i].vaddr = SLOT_USABLE;
+  if (clear_link)
+  {
+    page->next = 0;
+    page->prev = 0;
+  }
+}
+
+// 分配虚拟页
+struct vpstab_page* vpstab_page_alloc(void)
+{
+  struct vpstab_page *sstabpg;
+  if ((sstabpg = (struct vpstab_page *)kalloc()) == 0)
+    return 0;
+  vpstab_page_clear(sstabpg, 1);
+  return sstabpg;
+}
+
+// 清空虚拟页链表
+void vpstab_clear(struct proc *pr)
+{
+  struct vpstab_page *p;
+
+  p = pr->vpstab_head;
+  while (p != 0)
+  {
+    vpstab_page_clear(p, 0);
+    p = p->next;
+  }
+}
+
+// 在虚拟页链表中加入页面
+int vpstab_growpage(struct proc *pr)
+{
+  struct vpstab_page **head, **tail;
+  head = &(pr->vpstab_head);
+  tail = &(pr->vpstab_tail);
+
+  // Start growing.
+  if (*head == 0)
+  {
+    // This process has no swapped swap page.
+    if ((*head = vpstab_page_alloc()) == 0)
+      return -1;
+    *tail = *head;
+  }
+  else
+  {
+    // This process has some swapped swap page.
+    struct vpstab_page *temp = *tail;
+    if ((*tail = vpstab_page_alloc()) == 0)
+      return -1;
+    temp->next = *tail;
+    (*tail)->prev = temp;
+  }
+
+  return 0;
+}
+
+// 复制链表(fork使用)
+int copy_stab(struct proc *dstproc, struct proc *srcproc)
+{
+  memstab_clear(dstproc);
+  dstproc->num_mem_entries = srcproc->num_mem_entries;
+  dstproc->memqueue_head = 0;
+  dstproc->memqueue_tail = 0;
+
+  struct memstab_page *curpg = dstproc->memstab_head;
+  int curpos = 0;
+  struct memstab_page_entry *cursrcent = srcproc->memqueue_head;
+  struct memstab_page_entry *olddstent = 0;
+
+  if (cursrcent != 0)
+    dstproc->memqueue_head = &(curpg->entries[curpos]);
+  while (cursrcent != 0)
+  {
+    if (olddstent != 0)
+      olddstent->next = &(curpg->entries[curpos]);
+    curpg->entries[curpos].prev = olddstent;
+    olddstent = &(curpg->entries[curpos]);
+    curpg->entries[curpos].vaddr = cursrcent->vaddr;
+
+    cursrcent = cursrcent->next;
+    curpos++;
+
+    if (curpos == NUM_MEMSTAB_PAGE_ENTRIES)
+    {
+      curpg = curpg->next;
+      curpos = 0;
+    }
+  }
+	dstproc->memqueue_tail = olddstent;
+
+  int i;
+  struct vpstab_page *srccurpg, *dstcurpg;
+  while (srcproc->num_vpstab_pages > dstproc->num_vpstab_pages)
+  {
+    if (vpstab_growpage(dstproc) == 0)
+      return -1;
+  }
+
+  srccurpg = srcproc->vpstab_head;
+  dstcurpg = dstproc->vpstab_head;
+  while (srccurpg != 0)
+  {
+    for (i = 0; i < NUM_VPSTAB_PAGE_ENTRIES; i++)
+      dstcurpg->entries[i] = srccurpg->entries[i];
+    dstcurpg = dstcurpg->next;
+    srccurpg = srccurpg->next;
+  }
+
+  return 0;
+}
+
 // Must be called with interrupts disabled
 int
 cpuid() {
@@ -111,6 +316,22 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+
+  // Set up mem swap table if not exist.
+  // Otherwise clear it.
+  if (p->memstab_head == 0)
+  {
+    if ((p->memstab_head = memstab_alloc()) == 0)
+	    return 0;
+
+  }
+  else
+    memstab_clear(p);
+
+  // Set up data for page swapping.
+  p->num_mem_entries = 0;
+	p->memqueue_head = 0;
+  p->memqueue_tail = 0;
 
   return p;
 }
@@ -208,6 +429,9 @@ fork(void)
   
   *np->tf = *curproc->tf;
 
+  // Copy data for swapping.
+	np->num_mem_entries = curproc->num_mem_entries;
+
   // new process stacksize equal to parent process stacksize
   np->stacksize = curproc->stacksize;
 
@@ -222,6 +446,29 @@ fork(void)
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
   pid = np->pid;
+
+  vpalloc(np);
+  char buf[PGSIZE / 2] = "";
+  int offset = 0;
+  int nread = 0;
+
+  if (mystrcmp(curproc->name, "init") != 0 && mystrcmp(curproc->name, "sh") != 0)
+  {
+    // Copy swap file.
+    offset = 0;
+    nread = 0;
+    while ((nread = vpread(curproc, buf, offset, PGSIZE / 2)) != 0)
+    {
+      if (vpwrite(np, buf, offset, nread) == -1)
+        panic("[ERROR] Copying vpfile in fork().");
+      offset += nread;
+    }
+
+  }
+
+  // Copy data for swapping.
+	if (copy_stab(np, curproc) == -1)
+	  return -1;
 
   acquire(&ptable.lock);
 
@@ -252,6 +499,10 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
+
+  // Remove swap file.
+  if (vpfree(curproc) != 0)
+    panic("[ERROR] Remove swap file error.");
 
   begin_op();
   iput(curproc->cwd);

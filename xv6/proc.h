@@ -34,6 +34,50 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// 相关参数定义
+#define NUM_MEMSTAB_PAGE_ENTRIES 256
+
+#define NUM_VPSTAB_PAGE_ENTRIES 512
+
+#define VPSTAB_PAGE_OFFSET (NUM_VPSTAB_PAGE_ENTRIES * PGSIZE)
+
+#define NUM_MEMSTAB_PAGES 32
+
+#define NUM_MEMSTAB_ENTRIES_CAPACITY (NUM_MEMSTAB_PAGE_ENTRIES * NUM_MEMSTAB_PAGES)
+
+// 虚拟页面文件最大大小
+#define VPFILE_LIMIT 65536
+
+// 虚拟页面文件最大数量
+#define MAX_VPFILES 4
+
+// 相关链表定义
+struct memstab_page_entry
+{
+  char *vaddr;
+  struct memstab_page_entry *next;
+  struct memstab_page_entry *prev;
+};
+
+struct vpstab_page_entry
+{
+  char *vaddr;
+};
+
+struct memstab_page
+{
+  struct memstab_page *prev;
+  struct memstab_page *next;
+  struct memstab_page_entry entries[NUM_MEMSTAB_PAGE_ENTRIES];
+};
+
+struct vpstab_page
+{
+  struct vpstab_page *prev;
+  struct vpstab_page *next;
+  struct vpstab_page_entry entries[NUM_VPSTAB_PAGE_ENTRIES];
+};
+
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -51,6 +95,22 @@ struct proc {
   char name[16];               // Process name (debugging)
   uint stacksize;              // Process stack size
   int stack_growing;           // if the stack is growing
+
+  int num_mem_entries;         // 物理页数
+  int num_vpstab_pages;        // 虚拟页数
+
+
+	struct file *vpfile[MAX_VPFILES];     //虚拟内存文件
+
+  //双向链表，包括物理内存页表、虚拟内存页表
+	struct memstab_page *memstab_head;
+  struct memstab_page *memstab_tail;
+  struct memstab_page_entry *memqueue_head;
+  struct memstab_page_entry *memqueue_tail;
+
+  struct vpstab_page *vpstab_head;
+  struct vpstab_page *vpstab_tail;
+
 };
 
 // Process memory is laid out contiguously, low addresses first:

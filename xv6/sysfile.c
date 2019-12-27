@@ -182,15 +182,12 @@ isdirempty(struct inode *dp)
 
 //PAGEBREAK!
 int
-sys_unlink(void)
+kunlink(char* path)
 {
   struct inode *ip, *dp;
   struct dirent de;
-  char name[DIRSIZ], *path;
+  char name[DIRSIZ];
   uint off;
-
-  if(argstr(0, &path) < 0)
-    return -1;
 
   begin_op();
   if((dp = nameiparent(path, name)) == 0){
@@ -238,7 +235,18 @@ bad:
   return -1;
 }
 
-static struct inode*
+int
+sys_unlink(void)
+{
+  char *path;
+
+  if(argstr(0, &path) < 0)
+    return -1;
+
+  return kunlink(path);
+}
+
+struct inode*
 create(char *path, short type, short major, short minor)
 {
   uint off;

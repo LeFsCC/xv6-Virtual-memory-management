@@ -52,6 +52,11 @@ struct inode*   nameiparent(char*, char*);
 int             readi(struct inode*, char*, uint, uint);
 void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, char*, uint, uint);
+int             vpalloc(struct proc *p);
+int             vpfree(struct proc *p);
+int             vpread(struct proc *p, char *buf, uint offset, uint size);
+int             vpwrite(struct proc *p, char *buf, uint offset, uint size);
+
 
 // ide.c
 void            ideinit(void);
@@ -125,6 +130,11 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+void            vpminit(void);
+int             vpstab_growpage(struct proc *pr);
+void            memstab_clear(struct proc*);
+void            vpstab_clear(struct proc*);
+
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -152,6 +162,8 @@ char*           safestrcpy(char*, const char*, int);
 int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
+char*           itoa(int i, char *s);
+int             mystrcmp(const char *p, const char *q);
 
 // syscall.c
 int             argint(int, int*);
@@ -191,6 +203,12 @@ void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 void            cast_page_fault(uint);
+void            replacepage(uint addr);
+
+// sysyfile.c
+
+struct inode*   create(char *path, short type, short major, short minor);
+int             kunlink(char* path);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

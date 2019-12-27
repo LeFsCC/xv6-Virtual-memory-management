@@ -20,6 +20,7 @@
 #include "fs.h"
 #include "buf.h"
 #include "file.h"
+#include "fcntl.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 static void itrunc(struct inode*);
@@ -396,7 +397,6 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
-
   panic("bmap: out of range");
 }
 
@@ -668,4 +668,102 @@ struct inode*
 nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
+}
+
+
+// 在硬盘中创建虚拟页面文件
+int
+vpalloc(struct proc *p)
+{
+  int no;
+	for (no = 0; no < MAX_VPFILES; no++)
+  {
+    char path[20];
+    struct inode *in;
+
+    memmove(path,"./.vp",5);
+    itoa(no, path + 5);
+    itoa(p->pid,path + 6);
+
+    begin_op();
+    in = create(path, T_FILE, 0, 0);
+    iunlock(in);
+
+    p->vpfile[no] = filealloc();
+    if (p->vpfile[no] == 0)
+      panic("[ERROR] no vpfile.\n");
+
+    p->vpfile[no]->ip = in;
+    p->vpfile[no]->type = FD_INODE;
+    p->vpfile[no]->off = 0;
+    p->vpfile[no]->readable = O_WRONLY;
+    p->vpfile[no]->writable = O_RDWR;
+
+    end_op();
+  }
+  return 0;
+}
+
+// 关闭虚拟页面文件
+int
+vpfree(struct proc *p)
+{
+  int no;
+  int ret = 0;
+  for (no = 0; no < MAX_VPFILES; no++)
+  {
+    char path[20];
+    memmove(path, "./.vp", 5);
+    itoa(no, path + 5);
+    itoa(p->pid, path + 6);
+
+    if (p->vpfile[no] == 0)
+    {
+	    ret = -1;
+      continue;
+    }
+    fileclose(p->vpfile[no]);
+
+    if (kunlink(path) == -1)
+      ret = -1;
+  }
+  return ret;
+}
+
+// 从虚拟页面文件中读信息
+int
+vpread(struct proc *pr, char *buf, uint offset, uint size)
+{
+  // 获得第几个文件
+	int fileno = offset / VPFILE_LIMIT;
+
+  if (fileno < 0 || fileno > MAX_VPFILES)
+    panic("offset too big!");
+  
+
+  // 根据偏移量读取
+  int fileoffset = offset % VPFILE_LIMIT;
+
+  pr->vpfile[fileno]->off = fileoffset;
+
+  return fileread(pr->vpfile[fileno], buf, size);
+
+}
+
+// 向虚拟内存页面中写入信息
+int
+vpwrite(struct proc *pr, char *buf, uint offset, uint size)
+{
+  // 获得第几个文件
+	int fileno = offset / VPFILE_LIMIT;
+
+  if (fileno < 0 || fileno > MAX_VPFILES)
+    panic("offset too big!");
+  
+  // 根据偏移量写入
+  int fileoffset = offset % VPFILE_LIMIT;
+
+  pr->vpfile[fileno]->off = fileoffset;
+
+  return filewrite(pr->vpfile[fileno], buf, size);
 }

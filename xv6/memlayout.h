@@ -9,6 +9,9 @@
 #define KERNLINK (KERNBASE+EXTMEM)  // Address where kernel is linked
 #define USERSTACKTOP KERNBASE
 
+// A special addr indicating this page slot can be used.
+#define SLOT_USABLE ((char*)0xffffffff)         
+
 #define V2P(a) (((uint) (a)) - KERNBASE)
 #define P2V(a) (((void *) (a)) + KERNBASE)
 
