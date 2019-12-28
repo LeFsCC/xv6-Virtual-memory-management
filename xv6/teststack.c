@@ -9,7 +9,7 @@
 * Time : 2019/12/24
 */
 #define TEST_MB 32
-#define TEST_KB 240
+#define TEST_KB 128
 
 void Recur(int n) {
 

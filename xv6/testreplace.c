@@ -29,7 +29,7 @@ int main()
     // This is a magic number, we only have a few swapping memory.
     // If the level is set too big, will use out vpfile.
     // If too small, will not trigger page swapping function.
-    rec(516);
+    rec(512);
 
     printf(1, "Page replacing test finished.\n");
     printf(1, "================================\n");
