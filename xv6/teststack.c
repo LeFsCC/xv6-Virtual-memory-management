@@ -8,6 +8,9 @@
 * Author : zhang jiacheng
 * Time : 2019/12/24
 */
+#define TEST_MB 32
+#define TEST_KB 240
+
 void Recur(int n) {
 
 	if(n <= 0)
@@ -51,13 +54,21 @@ int main() {
 
 
 	printf(1, "Test7: allocate 221mb stack in my new framework!\n");
-	char b[32][1024][1024];
+	char b[TEST_MB][1024][1024];
 	for(int i = 0; i < 1024;i++) {
 		for(int j = 0; j < 1024; j++) {
 			b[0][i][j] = '1';
 		}
 	}
-	printf(1, "success in allocate 32mb stack in my new framework!%c\n", b[0][0][0]);
+	char a[TEST_KB][1024];
+	for(int i = 0; i < 64;i++) {
+		for(int j = 0; j < 1024; j++) {
+			a[i][j] = '1';
+		}
+	}
+
+	printf(1, "success in allocate %dMB %dKB stack in my new framework!%c\n", TEST_MB, TEST_KB, b[0][0][0]);
+	printf(1, "%c\n", a[0][0]);
 
 	return 0;
 }
