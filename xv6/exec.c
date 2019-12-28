@@ -105,10 +105,11 @@ exec(char *path, char **argv)
   // Commit to the user image.
   oldpgdir = curproc->pgdir;
   curproc->pgdir = pgdir;
+  curproc->stacksize = PGSIZE;
   curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
-  curproc->stacksize = PGSIZE;
+
 
   // 刷新虚拟页面文件
   vpfree(curproc);
