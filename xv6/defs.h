@@ -130,10 +130,15 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+void            shrmeminit(void);
 void            vpminit(void);
 int             vpstab_growpage(struct proc *pr);
 void            memstab_clear(struct proc*);
 void            vpstab_clear(struct proc*);
+int             make_shrmem(int sign);
+int             remove_shrmem(int sign);
+int             read_shrmem(int sign, char* buffer);
+int             write_shrmem(int sign, char* buffer);
 
 
 // swtch.S

@@ -78,6 +78,9 @@ struct vpstab_page
   struct vpstab_page_entry entries[NUM_VPSTAB_PAGE_ENTRIES];
 };
 
+// 每个进程的共享内存数
+#define PROC_SHR_MEM_NUM 4
+
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -111,6 +114,15 @@ struct proc {
   struct vpstab_page *vpstab_head;
   struct vpstab_page *vpstab_tail;
 
+  int shrmem_sigs[PROC_SHR_MEM_NUM];
+
+};
+
+// 共享内存结构体
+struct share_memory
+{
+  void *addr;
+  int sig;
 };
 
 // Process memory is laid out contiguously, low addresses first:
@@ -118,3 +130,7 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+
+// 共享内存数
+#define SHR_MEM_NUM 1024

@@ -132,6 +132,11 @@ extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_fpgn(void);
+extern int sys_make_shrmem(void);
+extern int sys_remove_shrmem(void);
+extern int sys_read_shrmem(void);
+extern int sys_write_shrmem(void);
+
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -155,7 +160,11 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-[SYS_fpgn]   sys_fpgn,
+[SYS_fpgn]    sys_fpgn,
+[SYS_make_shrmem]       sys_make_shrmem,
+[SYS_remove_shrmem]     sys_remove_shrmem,
+[SYS_read_shrmem]       sys_read_shrmem,
+[SYS_write_shrmem]      sys_write_shrmem
 };
 
 void

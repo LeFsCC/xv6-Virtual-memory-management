@@ -24,6 +24,10 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int fpgn(void);
+int make_shrmem(int);
+int remove_shrmem(int);
+int read_shrmem(int, char*);
+int write_shrmem(int, char*);
 
 // ulib.c
 int stat(char*, struct stat*);

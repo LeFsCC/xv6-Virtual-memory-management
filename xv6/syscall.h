@@ -20,4 +20,8 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
-#define SYS_fpgn  22
+#define SYS_fpgn   22
+#define SYS_make_shrmem     23
+#define SYS_remove_shrmem   24
+#define SYS_read_shrmem     25
+#define SYS_write_shrmem    26
