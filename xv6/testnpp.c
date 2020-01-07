@@ -3,8 +3,7 @@
 #include "user.h"
 int main()
 {
-	printf(1, "start\n");
-    int *a = 0;
+    int *a = (int*)100;
     printf(1, "================================\n");
     printf(1, "Null pointer protection test started.\n");
     printf(1, "This process should be killed and produce no more messages.\n");

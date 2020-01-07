@@ -642,8 +642,6 @@ void cast_page_fault(uint errcode)
   uint pa;
   char *mem;
   struct proc *curproc = myproc();
-
-  cprintf("va = %d, PGSIZE = %d\n", va, PGSIZE);
   if (!(errcode & PGFLT_P))
   {
     // If va is less than PGSIZE, this is a null pointer.
