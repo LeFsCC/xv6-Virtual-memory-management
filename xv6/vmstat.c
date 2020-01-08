@@ -4,6 +4,6 @@
 
 int main()
 {
-    int num =fpgn();
-    printf(1,"number of free pages: %d\n", num);
+    int num = fpgn()*4;
+    printf(1,"free memory space: %d KB\n", num);
 }

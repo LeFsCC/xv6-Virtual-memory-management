@@ -322,7 +322,7 @@ SUCCESS:
 // Swap out a page from memstab to vpstab.
 struct memstab_page_entry *write_page(char *va)
 {
-  cprintf("Swapping out a page.\n");
+  cprintf("Replaced a page.\n");
   return fifo_write();
 }
 
@@ -836,7 +836,6 @@ void fifo_replace(uint addr)
 
 void replacepage(uint addr)
 {
-  cprintf("[ INFO ] Swapping page for 0x%x.\n", addr);
   struct proc *curproc = myproc();
 
   if (mystrcmp(curproc->name, "init") == 0 || mystrcmp(curproc->name, "sh") == 0)

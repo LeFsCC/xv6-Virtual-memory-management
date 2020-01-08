@@ -9,7 +9,7 @@ void rec(int n)
         printf(1, "Recursion exit.\n");
         return;
     }
-    else if (n % 50 == 0 || n < 100)
+    else if (n % 100 == 0 || n < 5)
         printf(1, "Recursion level %d\n", n);
 
     int array[16384];
