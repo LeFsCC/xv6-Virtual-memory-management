@@ -29,7 +29,7 @@ void pinit(void)
 struct share_memory shrmems[SHR_MEM_NUM];
 struct spinlock shrmem_lock;
 
-// 初始化共享内存
+// 初始化共享内存池
 void shrmeminit(void)
 {
   for (int i = 0; i < SHR_MEM_NUM; i++)
@@ -348,7 +348,7 @@ found:
   p->memqueue_head = 0;
   p->memqueue_tail = 0;
 
-  // 配置共享内存
+  // 进程初始不拥有共享内存
   for (int i = 0; i < PROC_SHR_MEM_NUM; i++)
   {
     p->shrmem_sigs[i] = 0;
@@ -528,13 +528,12 @@ void exit(void)
   if (vpfree(curproc) != 0)
     panic("[ERROR] Remove swap file error.");
 
-  // 释放共享内存
+  // 释放进程占用的共享内存
   for (int i = 0; i < PROC_SHR_MEM_NUM; i++)
   {
     if (curproc->shrmem_sigs[i] != 0)
     {
       remove_shrmem(curproc->shrmem_sigs[i]);
-      curproc->shrmem_sigs[i] = 0;
     }
     curproc->shrmem_sigs[i] = -1;
   }
@@ -798,7 +797,7 @@ int kill(int pid)
   return -1;
 }
 
-// 创建共享内存
+// 为当前进程分配一页共享内存
 int make_shrmem(int sign)
 {
   acquire(&shrmem_lock);
@@ -814,6 +813,7 @@ int make_shrmem(int sign)
     release(&shrmem_lock);
     return -1;
   }
+  // 在共享内存池中寻找一页空闲内存
   for (i = 0; i < SHR_MEM_NUM; i++)
   {
     if (shrmems[i].sig == 0)
@@ -836,7 +836,7 @@ int make_shrmem(int sign)
   return ret;
 }
 
-// 清除共享内存
+// 释放一页共享内存
 int remove_shrmem(int sign)
 {
   acquire(&shrmem_lock);
