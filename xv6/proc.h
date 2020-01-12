@@ -34,48 +34,52 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-// 相关参数定义
-#define NUM_MEMSTAB_PAGE_ENTRIES 256
+// 物理页表项数
+#define NUM_MEM_PAGE_ENTRIES 256
 
-#define NUM_VPSTAB_PAGE_ENTRIES 512
+// 虚拟页表项数
+#define NUM_VIRTUAL_PAGE_ENTRIES 64
 
-#define VPSTAB_PAGE_OFFSET (NUM_VPSTAB_PAGE_ENTRIES * PGSIZE)
+// 虚拟页表的偏移量
+#define VIRTUAL_PAGE_OFFSET (NUM_VIRTUAL_PAGE_ENTRIES * PGSIZE)
 
-#define NUM_MEMSTAB_PAGES 32
+// 物理内存页表页数
+#define NUM_MEM_PAGES 32
 
-#define NUM_MEMSTAB_ENTRIES_CAPACITY (NUM_MEMSTAB_PAGE_ENTRIES * NUM_MEMSTAB_PAGES)
+// 物理内存总页表项数
+#define MEM_CAPACITY (NUM_MEM_PAGE_ENTRIES * NUM_MEM_PAGES)
 
 // 虚拟页面文件最大大小
-#define VPFILE_LIMIT 65536
+#define VPFILE_SIZE 65536
 
-// 虚拟页面文件最大数量
+// 虚拟页面文件数量
 #define MAX_VPFILES 4
 
-// 相关链表定义
-struct memstab_page_entry
+// 记录物理内存和虚拟内存的双向链表
+struct mem_page_entry
 {
   char *vaddr;
-  struct memstab_page_entry *next;
-  struct memstab_page_entry *prev;
+  struct mem_page_entry *next;
+  struct mem_page_entry *prev;
 };
 
-struct vpstab_page_entry
+struct virtual_page_entry
 {
   char *vaddr;
 };
 
-struct memstab_page
+struct mem_page
 {
-  struct memstab_page *prev;
-  struct memstab_page *next;
-  struct memstab_page_entry entries[NUM_MEMSTAB_PAGE_ENTRIES];
+  struct mem_page *prev;
+  struct mem_page *next;
+  struct mem_page_entry entries[NUM_MEM_PAGE_ENTRIES];
 };
 
-struct vpstab_page
+struct virtual_page
 {
-  struct vpstab_page *prev;
-  struct vpstab_page *next;
-  struct vpstab_page_entry entries[NUM_VPSTAB_PAGE_ENTRIES];
+  struct virtual_page *prev;
+  struct virtual_page *next;
+  struct virtual_page_entry entries[NUM_VIRTUAL_PAGE_ENTRIES];
 };
 
 // 每个进程最多占用128页共享内存
@@ -99,20 +103,21 @@ struct proc {
   uint stacksize;              // Process stack size
   int stack_growing;           // if the stack is growing
 
-  int num_mem_entries;         // 物理页数
-  int num_vpstab_pages;        // 虚拟页数
+  int num_mem_page_entries;         // 物理页面项数
+  int num_virtual_page;        // 虚拟页数
 
 
 	struct file *vpfile[MAX_VPFILES];     //虚拟内存文件
 
   //双向链表，包括物理内存页表、虚拟内存页表
-	struct memstab_page *memstab_head;
-  struct memstab_page *memstab_tail;
-  struct memstab_page_entry *memqueue_head;
-  struct memstab_page_entry *memqueue_tail;
+	struct mem_page *mem_page_head;
+  struct mem_page *mem_page_tail;
+  
+  struct mem_page_entry *mem_queue_head;
+  struct mem_page_entry *mem_queue_tail;
 
-  struct vpstab_page *vpstab_head;
-  struct vpstab_page *vpstab_tail;
+  struct virtual_page *virtual_page_head;
+  struct virtual_page *virtual_page_tail;
 
   int shrmem_sigs[PROC_SHR_MEM_NUM];
 

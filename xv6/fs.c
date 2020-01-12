@@ -675,54 +675,56 @@ nameiparent(char *path, char *name)
 int
 vpalloc(struct proc *p)
 {
-  int no;
-	for (no = 0; no < MAX_VPFILES; no++)
+  int index;
+	for (index = 0; index < MAX_VPFILES; index++)
   {
     char path[20];
     struct inode *in;
 
     memmove(path,"./.vp",5);
-    itoa(no, path + 5);
-    itoa(p->pid,path + 6);
+    itoa(index, path + 5);
+    path[6]='_';
+    itoa(p->pid,path + 7);
 
     begin_op();
     in = create(path, T_FILE, 0, 0);
     iunlock(in);
 
-    p->vpfile[no] = filealloc();
-    if (p->vpfile[no] == 0)
-      panic("[ERROR] no vpfile.\n");
+    p->vpfile[index] = filealloc();
+    if (p->vpfile[index] == 0)
+      panic("[ERROR] Failed to alloc virtual page file.\n");
 
-    p->vpfile[no]->ip = in;
-    p->vpfile[no]->type = FD_INODE;
-    p->vpfile[no]->off = 0;
-    p->vpfile[no]->readable = O_WRONLY;
-    p->vpfile[no]->writable = O_RDWR;
+    p->vpfile[index]->ip = in;
+    p->vpfile[index]->type = FD_INODE;
+    p->vpfile[index]->off = 0;
+    p->vpfile[index]->readable = O_WRONLY;
+    p->vpfile[index]->writable = O_RDWR;
 
     end_op();
   }
   return 0;
 }
 
-// 关闭虚拟页面文件
+// 释放虚拟页面
 int
 vpfree(struct proc *p)
 {
-  int no;
+  int index;
   int ret = 0;
-  for (no = 0; no < MAX_VPFILES; no++)
+  for (index = 0; index < MAX_VPFILES; index++)
   {
     char path[20];
     memmove(path, "./.vp", 5);
-    itoa(no, path + 5);
-    itoa(p->pid, path + 6);
+    itoa(index, path + 5);
+    path[6]='_';
+    itoa(p->pid, path + 7);
 
-    if (p->vpfile[no] == 0)
+    if (p->vpfile[index] == 0)
     {
 	    ret = -1;
       continue;
     }
-    fileclose(p->vpfile[no]);
+    fileclose(p->vpfile[index]);
 
     if (kunlink(path) == -1)
       ret = -1;
@@ -735,14 +737,14 @@ int
 vpread(struct proc *pr, char *buf, uint offset, uint size)
 {
   // 获得第几个文件
-	int fileno = offset / VPFILE_LIMIT;
+	int fileno = offset / VPFILE_SIZE;
 
   if (fileno < 0 || fileno > MAX_VPFILES)
     panic("offset too big!");
   
 
   // 根据偏移量读取
-  int fileoffset = offset % VPFILE_LIMIT;
+  int fileoffset = offset % VPFILE_SIZE;
 
   pr->vpfile[fileno]->off = fileoffset;
 
@@ -755,13 +757,13 @@ int
 vpwrite(struct proc *pr, char *buf, uint offset, uint size)
 {
   // 获得第几个文件
-	int fileno = offset / VPFILE_LIMIT;
+	int fileno = offset / VPFILE_SIZE;
 
   if (fileno < 0 || fileno > MAX_VPFILES)
     panic("offset too big!");
   
   // 根据偏移量写入
-  int fileoffset = offset % VPFILE_LIMIT;
+  int fileoffset = offset % VPFILE_SIZE;
 
   pr->vpfile[fileno]->off = fileoffset;
 

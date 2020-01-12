@@ -2,15 +2,14 @@
 #include "stat.h"
 #include "user.h"
 
+// 递归调用，每次申请内存空间64KB
 void rec(int n)
 {
-    if (n == 0)
-    {
-        printf(1, "Recursion exit.\n");
-        return;
-    }
-    else if (n % 100 == 0 || n < 5)
-        printf(1, "Recursion level %d\n", n);
+    if (n <= 0)
+    return;
+    
+    if (n % 100 == 0 || n < 5)
+        printf(1, "Recursion No.%d\n", n);
 
     int array[16384];
     int i;
@@ -23,15 +22,12 @@ void rec(int n)
 
 int main()
 {
-    printf(1, "================================\n");
-    printf(1, "Page replacing test started.\n");
+    printf(1, "Test started.\n");
+    //512次恰好会发生页面置换并且内存空间可用
+    int time =512;
+    printf(1, "This test will recurse %d times.\n",time);
+    rec(time);
 
-    // This is a magic number, we only have a few swapping memory.
-    // If the level is set too big, will use out vpfile.
-    // If too small, will not trigger page swapping function.
-    rec(512);
-
-    printf(1, "Page replacing test finished.\n");
-    printf(1, "================================\n");
+    printf(1, "Test finished.\n");
     return 0;
 }

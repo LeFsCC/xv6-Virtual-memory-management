@@ -8,7 +8,7 @@
 #include "elf.h"
 #include "traps.h"
 
-#define REPLACE_BUF_SIZE (PGSIZE / 4) // Buffer size when swap.
+#define REPLACE_BUF_SIZE (PGSIZE / 4) // Buffer size.
 
 extern char data[]; // defined by kernel.ld
 pde_t *kpgdir;      // for use in scheduler()
@@ -220,25 +220,25 @@ int loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   return 0;
 }
 
-// Find a usable slot and record it using linear search.
-void fifo_record(char *va, struct proc *curproc)
+// 查找空闲slot并记录
+void find_slot(char *va, struct proc *curproc)
 {
   int curpos = 0;
-  struct memstab_page *curpg = curproc->memstab_head;
+  struct mem_page *curpg = curproc->mem_page_head;
   while (curpg != 0)
   {
-    for (curpos = 0; curpos < NUM_MEMSTAB_PAGE_ENTRIES; curpos++)
+    for (curpos = 0; curpos < NUM_MEM_PAGE_ENTRIES; curpos++)
     {
       if (curpg->entries[curpos].vaddr == SLOT_USABLE)
       {
         curpg->entries[curpos].vaddr = va;
-        curpg->entries[curpos].next = curproc->memqueue_head;
-        if (curproc->memqueue_head == 0)
-          curproc->memqueue_head = curproc->memqueue_tail = &(curpg->entries[curpos]);
+        curpg->entries[curpos].next = curproc->mem_queue_head;
+        if (curproc->mem_queue_head == 0)
+          curproc->mem_queue_head = curproc->mem_queue_tail = &(curpg->entries[curpos]);
         else
         {
-          curproc->memqueue_head->prev = &(curpg->entries[curpos]);
-          curproc->memqueue_head = &(curpg->entries[curpos]);
+          curproc->mem_queue_head->prev = &(curpg->entries[curpos]);
+          curproc->mem_queue_head = &(curpg->entries[curpos]);
         }
         return;
       }
@@ -249,54 +249,55 @@ void fifo_record(char *va, struct proc *curproc)
   panic("[ERROR] No free slot in memory.");
 }
 
-// Add a new page to memstab.
-void record_page(char *va)
+// 添加新页面项.
+void add_page(char *va)
 {
   struct proc *curproc = myproc();
-  fifo_record(va, curproc);
-  curproc->num_mem_entries++;
+  find_slot(va, curproc);
+  curproc->num_mem_page_entries++;
 }
 
-struct memstab_page_entry *fifo_write()
+// 写入页面
+struct mem_page_entry *fifo_write()
 {
-  struct memstab_page_entry *link, *last;
+  struct mem_page_entry *link, *last;
   struct proc *curproc = myproc();
 
-  link = curproc->memqueue_head;
+  link = curproc->mem_queue_head;
   if (link == 0 || link->next == 0)
     panic("Only 0 or 1 page in memory.");
-  last = curproc->memqueue_tail;
+  last = curproc->mem_queue_tail;
   if (last == 0 || last->prev == 0)
     panic("[Error] last null!");
-  curproc->memqueue_tail = last->prev;
+  curproc->mem_queue_tail = last->prev;
   last->prev->next = 0;
   last->prev = 0;
 
-  struct vpstab_page *curpage;
+  struct virtual_page *curpage;
   int i = 0, pg = 0;
-  curpage = curproc->vpstab_head;
+  curpage = curproc->virtual_page_head;
 
   while (curpage != 0)
   {
-    for (i = 0; i < NUM_VPSTAB_PAGE_ENTRIES; i++)
+    for (i = 0; i < NUM_VIRTUAL_PAGE_ENTRIES; i++)
       if (curpage->entries[i].vaddr == SLOT_USABLE)
       {
         curpage->entries[i].vaddr = last->vaddr;
-        if (vpwrite(curproc, (char *)PTE_ADDR(last->vaddr), (pg * VPSTAB_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
+        if (vpwrite(curproc, (char *)PTE_ADDR(last->vaddr), (pg * VIRTUAL_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
           return 0;
         goto SUCCESS;
       }
     curpage = curpage->next;
     pg++;
   }
-  vpstab_growpage(curproc);
-  curpage = curproc->vpstab_tail;
+  vmem_growpage(curproc);
+  curpage = curproc->virtual_page_tail;
 
-  for (i = 0; i < NUM_VPSTAB_PAGE_ENTRIES; i++)
+  for (i = 0; i < NUM_VIRTUAL_PAGE_ENTRIES; i++)
     if (curpage->entries[i].vaddr == SLOT_USABLE)
     {
       curpage->entries[i].vaddr = last->vaddr;
-      if (vpwrite(curproc, (char *)PTE_ADDR(last->vaddr), (pg * VPSTAB_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
+      if (vpwrite(curproc, (char *)PTE_ADDR(last->vaddr), (pg * VIRTUAL_PAGE_OFFSET) + (i * PGSIZE), PGSIZE) == 0)
         return 0;
       goto SUCCESS;
     }
@@ -306,7 +307,7 @@ struct memstab_page_entry *fifo_write()
   pte_t *pte;
 
 SUCCESS:
-  // Free the page pointed by last - it has been swapped out and can be reused.
+  // Free the page pointed by last - it has been replaced and can be reused.
   pte = walkpgdir(curproc->pgdir, (void *)last->vaddr, 0);
   if (!(*pte))
     panic("[ERROR] [fifo_write] PTE empty.");
@@ -319,8 +320,7 @@ SUCCESS:
   return last;
 }
 
-// Swap out a page from memstab to vpstab.
-struct memstab_page_entry *write_page(char *va)
+struct mem_page_entry *write_page(char *va)
 {
   cprintf("Replaced a page.\n");
   return fifo_write();
@@ -341,7 +341,7 @@ int allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   int stack_space = USERSTACKTOP - curproc->stacksize - PGSIZE;
 
   uint newpage_allocated = 1;
-  struct memstab_page_entry *l;
+  struct mem_page_entry *l;
 
   // Check args.
 
@@ -366,20 +366,20 @@ int allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   for (; a < newsz; a += PGSIZE)
   {
     // Check if we have enough space to put the page in memory.
-    if (curproc->num_mem_entries >= NUM_MEMSTAB_ENTRIES_CAPACITY)
+    if (curproc->num_mem_page_entries >= MEM_CAPACITY)
     {
-      // Swap out page at oldsz.
+      // Replace page at oldsz.
       if ((l = write_page((char *)a)) == 0)
         panic("[ERROR] Cannot write to vpfile.");
 
       l->vaddr = (char *)a;
-      l->next = curproc->memqueue_head;
-      if (curproc->memqueue_head == 0)
-        curproc->memqueue_head = curproc->memqueue_tail = l;
+      l->next = curproc->mem_queue_head;
+      if (curproc->mem_queue_head == 0)
+        curproc->mem_queue_head = curproc->mem_queue_tail = l;
       else
       {
-        curproc->memqueue_head->prev = l;
-        curproc->memqueue_head = l;
+        curproc->mem_queue_head->prev = l;
+        curproc->mem_queue_head = l;
       }
 
       // No new page in memory will be used
@@ -388,7 +388,7 @@ int allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     }
 
     if (newpage_allocated)
-      record_page((char *)a);
+      add_page((char *)a);
     mem = kalloc();
     if (mem == 0)
     {
@@ -437,11 +437,11 @@ int deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       // If the page is in memstab, clear it.
       if (curproc->pgdir == pgdir)
       {
-        struct memstab_page *curpg = curproc->memstab_head;
-        struct memstab_page_entry *slot = 0;
+        struct mem_page *curpg = curproc->mem_page_head;
+        struct mem_page_entry *slot = 0;
         while (curpg != 0)
         {
-          for (i = 0; i < NUM_MEMSTAB_PAGE_ENTRIES; i++)
+          for (i = 0; i < NUM_MEM_PAGE_ENTRIES; i++)
             if (curpg->entries[i].vaddr == (char *)(a))
             {
               slot = &(curpg->entries[i]);
@@ -454,15 +454,15 @@ int deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         }
         panic("Should have a slot.");
         slot->vaddr = SLOT_USABLE;
-        if (curproc->memqueue_head == slot)
+        if (curproc->mem_queue_head == slot)
         {
           if (slot->next != 0)
             slot->next->prev = 0;
-          curproc->memqueue_head = slot->next;
+          curproc->mem_queue_head = slot->next;
         }
         else
         {
-          struct memstab_page_entry *l = curproc->memqueue_head;
+          struct mem_page_entry *l = curproc->mem_queue_head;
           while (l->next != slot)
             l = l->next;
           l->next->next->prev = l;
@@ -470,7 +470,7 @@ int deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         }
         slot->next = 0;
         slot->prev = 0;
-        curproc->num_mem_entries--;
+        curproc->num_mem_page_entries--;
       }
       char *v = P2V(pa);
       kfree(v);
@@ -479,12 +479,12 @@ int deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     // Maybe the page is not presented by is in vpfile.
     else if ((*pte & PTE_PG) && curproc->pgdir == pgdir)
     {
-      struct vpstab_page *curpg;
+      struct virtual_page *curpg;
       int i;
-      curpg = curproc->vpstab_head;
+      curpg = curproc->virtual_page_head;
       while (curpg != 0)
       {
-        for (i = 0; i < NUM_VPSTAB_PAGE_ENTRIES; i++)
+        for (i = 0; i < NUM_VIRTUAL_PAGE_ENTRIES; i++)
         {
           if (curpg->entries[i].vaddr == (char *)a)
           {
@@ -652,14 +652,13 @@ void cast_page_fault(uint errcode)
       return;
     }
 
-    // Used by swapping.
+    // Used by replacing.
     pte_t *pte = &curproc->pgdir[PDX(va)];
     if (((*pte) & PTE_P) != 0)
     {
-      // If the page is swapped out, swap it in.
       if (((uint *)PTE_ADDR(P2V(*pte)))[PTX(va)] & PTE_PG)
       {
-        replacepage(PTE_ADDR(va));
+        replace_page(PTE_ADDR(va));
         return;
       }
     }
@@ -756,6 +755,7 @@ void cast_page_fault(uint errcode)
     panic("page fault. Wrong share count error.");
 }
 
+// 置换页面
 void fifo_replace(uint addr)
 {
   int i, j;
@@ -763,32 +763,32 @@ void fifo_replace(uint addr)
   pte_t *pte_in, *pte_out;
   struct proc *curproc = myproc();
 
-  // Find the last record in memstab.
-  struct memstab_page_entry *link = curproc->memqueue_head;
-  struct memstab_page_entry *last;
+  // Find the last record.
+  struct mem_page_entry *link = curproc->mem_queue_head;
+  struct mem_page_entry *last;
   if (link == 0 || link->next == 0)
     panic("[ERROR] Only 0 or 1 pages in memory.");
-  last = curproc->memqueue_tail;
+  last = curproc->mem_queue_tail;
   if (last == 0 || last->prev == 0)
     panic("[ERROR] last null!");
-  curproc->memqueue_tail = last->prev;
+  curproc->mem_queue_tail = last->prev;
   last->prev->next = 0;
   last->prev = 0;
 
-  // Locate the PTE of the page to be swapped out.
+  // Locate the PTE of the page to be replaced.
   pte_in = walkpgdir(curproc->pgdir, (void *)last->vaddr, 0);
   if (!*pte_in)
     panic("[ERROR] A record is in memstab but not in pgdir.");
-  struct vpstab_page *curpg = 0;
-  struct vpstab_page_entry *ent = 0;
+  struct virtual_page *curpg = 0;
+  struct virtual_page_entry *ent = 0;
   uint offset = 0;
 
-  curpg = curproc->vpstab_head;
+  curpg = curproc->virtual_page_head;
 
-  // Find the record of the page to be swapped in in swap_pages.
+  // Find the record of the page to be replaced.
   while (curpg != 0)
   {
-    for (i = 0; i < NUM_VPSTAB_PAGE_ENTRIES; i++)
+    for (i = 0; i < NUM_VIRTUAL_PAGE_ENTRIES; i++)
       if (curpg->entries[i].vaddr == (char *)PTE_ADDR(addr))
       {
         ent = &(curpg->entries[i]);
@@ -801,14 +801,14 @@ void fifo_replace(uint addr)
     else
     {
       curpg = curpg->next;
-      offset += VPSTAB_PAGE_OFFSET;
+      offset += VIRTUAL_PAGE_OFFSET;
     }
   }
 
   if (ent == 0)
     panic("[ERROR] Should find a record in vpfile!");
 
-  // Perform swap.
+  // Replace memory page.
   ent->vaddr = last->vaddr;
 
   pte_out = walkpgdir(curproc->pgdir, (void *)addr, 0);
@@ -816,7 +816,6 @@ void fifo_replace(uint addr)
     panic("[ERROR] A record should be in pgdir!");
   *pte_out = PTE_ADDR(*pte_in) | PTE_U | PTE_W | PTE_P;
 
-  // Real swap - read from vpfile and write to swap file.
   for (j = 0; j < 4; j++)
   {
     uint loc = offset + (REPLACE_BUF_SIZE * j);
@@ -828,19 +827,19 @@ void fifo_replace(uint addr)
   }
 
   *pte_in = PTE_U | PTE_W | PTE_PG;
-  last->next = curproc->memqueue_head;
-  curproc->memqueue_head->prev = last;
-  curproc->memqueue_head = last;
+  last->next = curproc->mem_queue_head;
+  curproc->mem_queue_head->prev = last;
+  curproc->mem_queue_head = last;
   last->vaddr = (char *)PTE_ADDR(addr);
 }
 
-void replacepage(uint addr)
+void replace_page(uint addr)
 {
   struct proc *curproc = myproc();
 
   if (mystrcmp(curproc->name, "init") == 0 || mystrcmp(curproc->name, "sh") == 0)
   {
-    curproc->num_mem_entries++;
+    curproc->num_mem_page_entries++;
     return;
   }
 

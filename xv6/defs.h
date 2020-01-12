@@ -132,9 +132,9 @@ void            wakeup(void*);
 void            yield(void);
 void            shrmeminit(void);
 void            vpminit(void);
-int             vpstab_growpage(struct proc *pr);
-void            memstab_clear(struct proc*);
-void            vpstab_clear(struct proc*);
+int             vmem_growpage(struct proc *pr);
+void            mem_clear(struct proc*);
+void            vmem_clear(struct proc*);
 int             make_shrmem(int sign);
 int             remove_shrmem(int sign);
 int             read_shrmem(int sign, char* buffer);
@@ -208,7 +208,7 @@ void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 void            cast_page_fault(uint);
-void            replacepage(uint addr);
+void            replace_page(uint addr);
 
 // sysyfile.c
 

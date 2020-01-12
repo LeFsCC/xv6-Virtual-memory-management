@@ -39,8 +39,8 @@ exec(char *path, char **argv)
     goto bad;
 
   // 初始化
-  memstab_clear(curproc);
-  vpstab_clear(curproc);
+  mem_clear(curproc);
+  vmem_clear(curproc);
 
 
   // Load program into memory.
